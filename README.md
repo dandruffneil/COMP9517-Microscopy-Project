@@ -1,9 +1,9 @@
-# COMP9517-Microscopy-Project
-
-Task 1 aimed deadline: Week 7 Sunday
-
-Task 2 aimed deadline: Week 9 Sunday
+# Task 1:Segment and Track Cells
 
 
-Demo due: Week 10 Tues/Thurs
-Report due: Week 10 Friday
+Use image binarization in opencv to segment all the cells in images. And use Kalman filter to track each cell and assign unique id to each cell among different frames.
+
+
+
+# References -
+https://github.com/mabhisharma/Multi-Object-Tracking-with-Kalman-Filter
