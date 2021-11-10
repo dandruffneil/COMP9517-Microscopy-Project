@@ -11,19 +11,30 @@ track_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
 				(127, 127, 255), (255, 0, 255), (255, 127, 255),
 				(127, 0, 255), (127, 0, 127),(127, 10, 255), (0,255, 127)]
 
+def gamma_correction(src, gamma):
+    invGamma = 1 / gamma
+ 
+    table = [((i / 255) ** invGamma) * 255 for i in range(256)]
+    table = np.array(table, np.uint8)
+ 
+    return cv2.LUT(src, table)
 
 def task1_1(root = '../Sequences/01/'):	
 	for img_name in os.listdir(root):
 		img_path = os.path.join(root,img_name)
-		img = cv2.imread(img_path)	
-		frame = np.ones(img.shape,np.uint8)*255
+		img = cv2.imread(img_path,-1)	
+		frame = np.ones((img.shape[0],img.shape[1],3),np.uint8)*255
 
 
-		_, img_binarized = cv2.threshold(img, 130, 255, cv2.THRESH_BINARY_INV)
-		img_gray = cv2.cvtColor(img_binarized, cv2.COLOR_BGR2GRAY)
-		img_gray = cv2.medianBlur(img_gray, 7) 
+		img = cv2.medianBlur(img, 5)
+		img = (img-np.min(img))/(np.max(img)-np.min(img))*65536
+		img_gray = (img/256).astype(np.uint8)
+		img_gray = gamma_correction(img_gray,2.5)
 
-		contours, hierarchy = cv2.findContours(img_gray,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)	
+		ret, img_threshold = cv2.threshold(img_gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+		img_threshold = cv2.medianBlur(img_threshold, 7)
+
+		contours, hierarchy = cv2.findContours(img_threshold,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_NONE)	
 		centers = []
 		for c in contours:
 			(x, y), radius = cv2.minEnclosingCircle(c)
@@ -56,15 +67,19 @@ def task1_1(root = '../Sequences/01/'):
 def task1_2(root = '../Sequences/01/'):	
 	for img_name in os.listdir(root):
 		img_path = os.path.join(root,img_name)
-		img = cv2.imread(img_path)	
-		frame = np.ones(img.shape,np.uint8)*255
+		img = cv2.imread(img_path,-1)	
+		frame = np.ones((img.shape[0],img.shape[1],3),np.uint8)*255
 
 
-		_, img_binarized = cv2.threshold(img, 130, 255, cv2.THRESH_BINARY_INV)
-		img_gray = cv2.cvtColor(img_binarized, cv2.COLOR_BGR2GRAY)
-		img_gray = cv2.medianBlur(img_gray, 7) 
+		img = cv2.medianBlur(img, 5)
+		img = (img-np.min(img))/(np.max(img)-np.min(img))*65536
+		img_gray = (img/256).astype(np.uint8)
+		img_gray = gamma_correction(img_gray,2.5)
 
-		contours, hierarchy = cv2.findContours(img_gray,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)	
+		ret, img_threshold = cv2.threshold(img_gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+		img_threshold = cv2.medianBlur(img_threshold, 7)
+
+		contours, hierarchy = cv2.findContours(img_threshold,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_NONE)
 		centers = []
 		for c in contours:
 			(x, y), radius = cv2.minEnclosingCircle(c)
@@ -100,5 +115,5 @@ def task1_2(root = '../Sequences/01/'):
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
 
 if __name__ == '__main__':
-	task1_1('../Sequences/01/')
-	#task1_2()
+	#task1_1('../Sequences/01/')
+	task1_2()
