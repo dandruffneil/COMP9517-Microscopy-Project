@@ -14,10 +14,15 @@ from skimage.color import label2rgb
 from PIL import Image
 
 
-IMAGE_FOLDER = "../Sequences/04/"
+IMAGE_FOLDER = "../Sequences/01/"
 n_images = len(os.listdir(IMAGE_FOLDER))
 # images are 1100 x 700
 counter = 0
+mode = 0 # 0: first time, 1: second time
+if mode == 0:
+    f = open("division.txt", "w")
+else:
+    f = open("division.txt", "r")
 
 # track objects based on distance
 def track_obj(tracked, centers, contours, thres):
@@ -31,9 +36,11 @@ def track_obj(tracked, centers, contours, thres):
                 "old_id": j["id"],
                 "old_coords": j["coords"],
                 "old_contour": j["contour"],
+                "old_area": j["area"],
                 "new_id": i,
                 "new_coords": centers[i],
                 "new_contour": contours[i],
+                "new_area": cv2.contourArea(contours[i]),
                 "dist": np.sqrt((j["coords"][0]-centers[i][0])**2+(j["coords"][1]-centers[i][1])**2)
             })
     newtrack_list = sorted(newtrack_list, key=lambda d: d['dist'])
@@ -49,6 +56,7 @@ def track_obj(tracked, centers, contours, thres):
     matched_new = []
     new_tracked = []
     total_dist = 0
+    total_area = 0
     total_entries = 0
     for i in range(len(newtrack_list)):
         if newtrack_list[i]["old_id"] not in matched_old:
@@ -58,33 +66,80 @@ def track_obj(tracked, centers, contours, thres):
                 new_tracked.append({
                     "id": newtrack_list[i]["old_id"],
                     "coords": newtrack_list[i]["new_coords"],
-                    "contour": newtrack_list[i]["new_contour"]
+                    "contour": newtrack_list[i]["new_contour"],
+                    "area": newtrack_list[i]["new_area"],
+                    "dist": newtrack_list[i]["dist"]
                 })
                 total_dist += newtrack_list[i]["dist"]
+                total_area += newtrack_list[i]["new_area"]
                 total_entries += 1
-
-    avg_dist = total_dist / total_entries
-    print("Avg displacement: " + str(avg_dist))
-    
     max_id += 1
+
+    divisions = []
+    cell_divisions = 0
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]["new_id"] not in matched_new:
+            if newtrack_list[i]["old_id"] in matched_old:
+                for j in new_tracked:
+                    if j["id"] == newtrack_list[i]["old_id"]:
+                        if j["dist"] < 40 or newtrack_list[i]["dist"] < 40:
+                            if newtrack_list[i]["new_area"] < 0.8 * newtrack_list[i]["old_area"] and j["area"] < 0.8 * newtrack_list[i]["old_area"]:
+                                j["id"] = max_id
+                                max_id += 1
+                                matched_new.append(newtrack_list[i]["new_id"])
+                                new_tracked.append({
+                                    "id": max_id,
+                                    "coords": newtrack_list[i]["new_coords"],
+                                    "contour": newtrack_list[i]["new_contour"],
+                                    "area": newtrack_list[i]["new_area"]
+                                })
+                                max_id += 1
+                                total_dist += newtrack_list[i]["dist"]
+                                total_area += newtrack_list[i]["new_area"]
+                                total_entries += 1
+                                cell_divisions += 1
+                                print("Division: " + str(newtrack_list[i]["old_id"]) + " --> " + str(max_id-2) + " & " + str(max_id-1))
+                                if mode == 0:
+                                    divisions.append((counter-1, newtrack_list[i]["old_id"]))
+
+    if mode == 0:
+        divisions = sorted(divisions, key=lambda d: d[1])
+        for i in divisions:
+            f.write(str(i[0]) + "," + str(i[1]) + "\n")
+
     for i in range(len(centers)):
         if i not in matched_new:
-            new_tracked.append({
-                "id": max_id,
-                "coords": centers[i],
-                "contour": contours[i]
-            })
-            max_id += 1
+            if cv2.contourArea(contours[i]) > 20:
+                new_tracked.append({
+                    "id": max_id,
+                    "coords": centers[i],
+                    "contour": contours[i],
+                    "area": cv2.contourArea(contours[i])
+                })
+                total_area += cv2.contourArea(contours[i])
+                max_id += 1
+
+    print("Number of cells: " + str(len(new_tracked)))
+    avg_dist = total_dist / total_entries
+    print("Avg displacement: " + str(avg_dist))
+    avg_area = total_area / len(new_tracked)
+    print("Avg area: " + str(avg_area))
+    print("Cell divisions: " + str(cell_divisions))
 
     new_tracked = sorted(new_tracked, key=lambda d: d['id'])
 
-    print("Active trackers: " + str(len(new_tracked)))
+    # print("Active trackers: " + str(len(new_tracked)))
     # print(new_tracked)
     return new_tracked
 
         
-
-
+line = None
+if mode > 0:
+    line = f.readline()
+    if line == "":
+        mode = -1
+    else:
+        line = line.split(",")
 tracked = None
 for img_name in os.listdir(IMAGE_FOLDER):
     image_path = os.path.join(IMAGE_FOLDER, img_name)
@@ -212,19 +267,26 @@ for img_name in os.listdir(IMAGE_FOLDER):
 
     if tracked is None:
         newtrack_dict = []
+        total_area = 0
         for c in range(len(centers)):
-            newtrack_dict.append({
-                "id": c,
-                "coords": centers[c],
-                "contour": contours[c]
-            })
+            if cv2.contourArea(contours[c]) > 20:
+                total_area += cv2.contourArea(contours[c])
+                newtrack_dict.append({
+                    "id": c,
+                    "coords": centers[c],
+                    "contour": contours[c],
+                    "area": cv2.contourArea(contours[c])
+                })
+        print("Number of cells: " + str(len(newtrack_dict)))
+        avg_area = total_area / len(newtrack_dict)
+        print("Avg area: " + str(avg_area))
         tracked = newtrack_dict
     else:
         tracked = track_obj(tracked, centers, contours, 50)
 
-    for i in tracked:
-        print(i["id"])
-        print(i["coords"])
+    # for i in tracked:
+    #     print(i["id"])
+    #     print(i["coords"])
 
     frame = np.ones(img.shape,np.uint8)*255
     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
@@ -235,10 +297,17 @@ for img_name in os.listdir(IMAGE_FOLDER):
     for j in tracked:
         x = int(j["coords"][0])
         y = int(j["coords"][1])
-        tl = (x-10,y-10)
-        br = (x+10,y+10)
+        tl = (x-20,y-20)
+        br = (x+20,y+20)
         track_color = track_colors[j["id"] % len(track_colors)]
-        cv2.rectangle(frame,tl,br,track_color,1)
+        if mode > 0:
+            if counter == int(line[0]) and j["id"] == int(line[1]):
+                cv2.rectangle(frame,tl,br,track_color,2)
+                line = f.readline()
+                if line == "":
+                    mode = -1
+                else:
+                    line = line.split(",")
         cv2.putText(frame,str(j["id"]), (x-10,y-20),0, 0.5, track_color,2)
         cv2.drawContours(frame,j["contour"], -1, track_color, 3)
         cv2.circle(frame,(x,y), 6, track_color,-1)
