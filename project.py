@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import cv2
 import os
+import time
 
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
@@ -13,11 +14,78 @@ from skimage.color import label2rgb
 from PIL import Image
 
 
-IMAGE_FOLDER = "../Sequences/01/"
+IMAGE_FOLDER = "../Sequences/04/"
 n_images = len(os.listdir(IMAGE_FOLDER))
 # images are 1100 x 700
 counter = 0
 
+# track objects based on distance
+def track_obj(tracked, centers, contours, thres):
+    max_id = -1
+    newtrack_list = []
+    for i in range(len(centers)):
+        for j in tracked:
+            if j["id"] > max_id:
+                max_id = j["id"]
+            newtrack_list.append({
+                "old_id": j["id"],
+                "old_coords": j["coords"],
+                "old_contour": j["contour"],
+                "new_id": i,
+                "new_coords": centers[i],
+                "new_contour": contours[i],
+                "dist": np.sqrt((j["coords"][0]-centers[i][0])**2+(j["coords"][1]-centers[i][1])**2)
+            })
+    newtrack_list = sorted(newtrack_list, key=lambda d: d['dist'])
+
+    thres_index = len(newtrack_list)
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]['dist'] > thres:
+            thres_index = i
+            break
+    
+    newtrack_list = newtrack_list[:thres_index]
+    matched_old = []
+    matched_new = []
+    new_tracked = []
+    total_dist = 0
+    total_entries = 0
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]["old_id"] not in matched_old:
+            if newtrack_list[i]["new_id"] not in matched_new:
+                matched_old.append(newtrack_list[i]["old_id"])
+                matched_new.append(newtrack_list[i]["new_id"])
+                new_tracked.append({
+                    "id": newtrack_list[i]["old_id"],
+                    "coords": newtrack_list[i]["new_coords"],
+                    "contour": newtrack_list[i]["new_contour"]
+                })
+                total_dist += newtrack_list[i]["dist"]
+                total_entries += 1
+
+    avg_dist = total_dist / total_entries
+    print("Avg displacement: " + str(avg_dist))
+    
+    max_id += 1
+    for i in range(len(centers)):
+        if i not in matched_new:
+            new_tracked.append({
+                "id": max_id,
+                "coords": centers[i],
+                "contour": contours[i]
+            })
+            max_id += 1
+
+    new_tracked = sorted(new_tracked, key=lambda d: d['id'])
+
+    print("Active trackers: " + str(len(new_tracked)))
+    # print(new_tracked)
+    return new_tracked
+
+        
+
+
+tracked = None
 for img_name in os.listdir(IMAGE_FOLDER):
     image_path = os.path.join(IMAGE_FOLDER, img_name)
     print(image_path)
@@ -131,8 +199,58 @@ for img_name in os.listdir(IMAGE_FOLDER):
 
 
     _, contours, _ = cv2.findContours(new_img_seg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    print(len(contours))
+    # print(len(contours))
     img_contour = cv2.drawContours(img, contours, -1, (0,255,0), 1)
-    plt.imshow(img_contour, 'gray'),plt.title(image_path)
-    plt.savefig(f'../seg_images/{counter}')
+
+    centers = []
+    for c in contours:
+        (x, y), radius = cv2.minEnclosingCircle(c)
+        centers.append((x,y))
+
+    centers = np.array(centers)
+    # print(centers)
+
+    if tracked is None:
+        newtrack_dict = []
+        for c in range(len(centers)):
+            newtrack_dict.append({
+                "id": c,
+                "coords": centers[c],
+                "contour": contours[c]
+            })
+        tracked = newtrack_dict
+    else:
+        tracked = track_obj(tracked, centers, contours, 50)
+
+    for i in tracked:
+        print(i["id"])
+        print(i["coords"])
+
+    frame = np.ones(img.shape,np.uint8)*255
+    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+
+    track_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
+				(127, 127, 255), (255, 0, 255), (255, 127, 255),
+				(127, 0, 255), (127, 0, 127),(127, 10, 255), (0,255, 127)]
+    for j in tracked:
+        x = int(j["coords"][0])
+        y = int(j["coords"][1])
+        tl = (x-10,y-10)
+        br = (x+10,y+10)
+        track_color = track_colors[j["id"] % len(track_colors)]
+        cv2.rectangle(frame,tl,br,track_color,1)
+        cv2.putText(frame,str(j["id"]), (x-10,y-20),0, 0.5, track_color,2)
+        cv2.drawContours(frame,j["contour"], -1, track_color, 3)
+        cv2.circle(frame,(x,y), 6, track_color,-1)
+
+    # cv2.destroyAllWindows()
+    # cv2.imshow('image',frame)
+    # cv2.waitKey(5000)
+    cv2.imwrite("image"+str(counter)+".jpg", frame)
+
+    time.sleep(0.5)
+
+
+    # plt.imshow(img_contour, 'gray'),plt.title(image_path)
+    # plt.savefig(f'../seg_images/{counter}')
     counter += 1
