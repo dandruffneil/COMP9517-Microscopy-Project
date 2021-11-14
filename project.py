@@ -201,6 +201,11 @@ for img_name in os.listdir(IMAGE_FOLDER):
     # plt.subplot(1,2,2),plt.imshow(img6, 'gray'), plt.title('Opening then closing')
     # plt.show()
 
+    _,cont,hier = cv2.findContours(img6,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in cont:
+        cv2.drawContours(img6,[cnt],0,1,-1)
+
     img_output = img6.copy()
 
     # Watershed implementation
