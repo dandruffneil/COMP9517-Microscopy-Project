@@ -23,10 +23,11 @@ if mode == 0:
     f = open("division.txt", "w")
 else:
     f = open("division.txt", "r")
+max_id = -1
 
 # track objects based on distance
 def track_obj(tracked, centers, contours, thres):
-    max_id = -1
+    global max_id
     newtrack_list = []
     for i in range(len(centers)):
         for j in tracked:
@@ -125,6 +126,7 @@ def track_obj(tracked, centers, contours, thres):
     avg_area = total_area / len(new_tracked)
     print("Avg area: " + str(avg_area))
     print("Cell divisions: " + str(cell_divisions))
+    max_id += -1
 
     new_tracked = sorted(new_tracked, key=lambda d: d['id'])
 
