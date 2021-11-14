@@ -1,0 +1,379 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import cv2
+import os
+import time
+
+from scipy import ndimage as ndi
+from skimage.segmentation import watershed
+from skimage.feature import peak_local_max
+from sklearn.cluster import MeanShift
+from skimage.color import label2rgb
+
+from PIL import Image
+
+IMAGE_FOLDER = "C:/YJ-files/UNSW-Master/COMP9517/Group Assignment/COMP9517 21T3 Group Project Dataset/Sequences/01/"
+n_images = len(os.listdir(IMAGE_FOLDER))
+# images are 1100 x 700
+counter = 0
+mode = 0 # 0: first time, 1: second time
+if mode == 0:
+    f = open("division.txt", "w")
+else:
+    f = open("division.txt", "r")
+
+trajectories = []
+    
+# track objects based on distance
+def track_obj(tracked, centers, contours, thres):
+    max_id = -1
+    newtrack_list = []
+    for i in range(len(centers)):
+        for j in tracked:
+            if j["id"] > max_id:
+                max_id = j["id"]
+            newtrack_list.append({
+                "old_id": j["id"],
+                "old_coords": j["coords"],
+                "old_contour": j["contour"],
+                "old_area": j["area"],
+                "new_id": i,
+                "new_coords": centers[i],
+                "new_contour": contours[i],
+                "new_area": cv2.contourArea(contours[i]),
+                "dist": np.sqrt((j["coords"][0]-centers[i][0])**2+(j["coords"][1]-centers[i][1])**2)
+            })
+            # Add a new cetroid value to draw trajectories
+            if is_in_trajectories(i):
+                centroid = find_centroid(contours[i])
+                for k in range(len(trajectories)):
+                    if trajectories[k]["id"] == i:
+                        if centroid not in trajectories[k]["trajectories"]:
+                            trajectories[k]["trajectories"].append(centroid)
+                        trajectories[k]["new_contours"] = contours[i]
+            else:
+                trajectories.append({
+                    "id": i,
+                    "new_contours": contours[i],
+                    "trajectories": []
+                })
+                centroid = find_centroid(contours[i])
+                if centroid not in trajectories[-1]["trajectories"]:
+                    trajectories[-1]["trajectories"].append(centroid)
+            
+    newtrack_list = sorted(newtrack_list, key=lambda d: d['dist'])
+
+    thres_index = len(newtrack_list)
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]['dist'] > thres:
+            thres_index = i
+            break
+    
+    newtrack_list = newtrack_list[:thres_index]
+    matched_old = []
+    matched_new = []
+    new_tracked = []
+    total_dist = 0
+    total_area = 0
+    total_entries = 0
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]["old_id"] not in matched_old:
+            if newtrack_list[i]["new_id"] not in matched_new:
+                matched_old.append(newtrack_list[i]["old_id"])
+                matched_new.append(newtrack_list[i]["new_id"])
+                new_tracked.append({
+                    "id": newtrack_list[i]["old_id"],
+                    "coords": newtrack_list[i]["new_coords"],
+                    "contour": newtrack_list[i]["new_contour"],
+                    "area": newtrack_list[i]["new_area"],
+                    "dist": newtrack_list[i]["dist"]
+                })
+                total_dist += newtrack_list[i]["dist"]
+                total_area += newtrack_list[i]["new_area"]
+                total_entries += 1
+                
+                tr_id = newtrack_list[i]["old_id"]
+                if is_in_trajectories(tr_id):
+                    centroid = find_centroid(newtrack_list[i]["new_contour"])
+                for k in range(len(trajectories)):
+                    if trajectories[k]["id"] == tr_id:
+                        if centroid not in trajectories[k]["trajectories"]:
+                            trajectories[k]["trajectories"].append(centroid)
+                        trajectories[k]["new_contours"] = newtrack_list[i]["new_contour"]
+                else:
+                    trajectories.append({
+                        "id": tr_id,
+                        "new_contours": newtrack_list[i]["new_contour"],
+                        "trajectories": []
+                    })
+                    centroid = find_centroid(newtrack_list[i]["new_contour"])
+                    if centroid not in trajectories[-1]["trajectories"]:
+                        trajectories[-1]["trajectories"].append(centroid)
+                
+    max_id += 1
+
+    # Track Cell Division
+    divisions = []
+    cell_divisions = 0
+    for i in range(len(newtrack_list)):
+        if newtrack_list[i]["new_id"] not in matched_new:
+            if newtrack_list[i]["old_id"] in matched_old:
+                for j in new_tracked:
+                    if j["id"] == newtrack_list[i]["old_id"]:
+                        if j["dist"] < 40 or newtrack_list[i]["dist"] < 40:
+                            if newtrack_list[i]["new_area"] < 0.8 * newtrack_list[i]["old_area"] and j["area"] < 0.8 * newtrack_list[i]["old_area"]:
+                                j["id"] = max_id
+                                max_id += 1
+                                matched_new.append(newtrack_list[i]["new_id"])
+                                new_tracked.append({
+                                    "id": max_id,
+                                    "coords": newtrack_list[i]["new_coords"],
+                                    "contour": newtrack_list[i]["new_contour"],
+                                    "area": newtrack_list[i]["new_area"]
+                                })
+                                max_id += 1
+                                total_dist += newtrack_list[i]["dist"]
+                                total_area += newtrack_list[i]["new_area"]
+                                total_entries += 1
+                                cell_divisions += 1
+                                print("Division: " + str(newtrack_list[i]["old_id"]) + " --> " + str(max_id-2) + " & " + str(max_id-1))
+                                if mode == 0:
+                                    divisions.append((counter-1, newtrack_list[i]["old_id"]))
+
+    if mode == 0:
+        divisions = sorted(divisions, key=lambda d: d[1])
+        for i in divisions:
+            f.write(str(i[0]) + "," + str(i[1]) + "\n")
+
+    for i in range(len(centers)):
+        if i not in matched_new:
+            if cv2.contourArea(contours[i]) > 20:
+                new_tracked.append({
+                    "id": max_id,
+                    "coords": centers[i],
+                    "contour": contours[i],
+                    "area": cv2.contourArea(contours[i])
+                })
+                total_area += cv2.contourArea(contours[i])
+                max_id += 1
+
+    print("Number of cells: " + str(len(new_tracked)))
+    avg_dist = total_dist / total_entries
+    print("Avg displacement: " + str(avg_dist))
+    avg_area = total_area / len(new_tracked)
+    print("Avg area: " + str(avg_area))
+    print("Cell divisions: " + str(cell_divisions))
+
+    new_tracked = sorted(new_tracked, key=lambda d: d['id'])
+
+    # print("Active trackers: " + str(len(new_tracked)))
+    # print(new_tracked)
+    return new_tracked
+
+def is_in_trajectories(id):
+    tracked = False
+    for i in range(len(trajectories)):
+        if trajectories[i]['id'] == id:
+            tracked = True
+            return tracked
+    return tracked
+
+def find_centroid(contour):
+    # Calculate moments for contour
+    M = cv2.moments(contour)
+                
+    # Calculate x,y coordinate of center
+    cX = int(M["m10"] / M["m00"])
+    cY = int(M["m01"] / M["m00"])
+    
+    return (cX, cY)
+        
+line = None
+if mode > 0:
+    line = f.readline()
+    if line == "":
+        mode = -1
+    else:
+        line = line.split(",")
+tracked = None
+for img_name in os.listdir(IMAGE_FOLDER):
+    image_path = os.path.join(IMAGE_FOLDER, img_name)
+    print(image_path)
+    img = cv2.imread(image_path, -1)
+    
+    
+    # Testing min-max filter to remove background
+    img_test = img.copy()
+    
+
+    # Image Preprocessing 1- Erosion & dilation
+    kernel = np.ones((50,50),np.uint16)
+    img_erosion = cv2.erode(img_test, kernel, iterations=3)
+    img_dilated = cv2.dilate(img_erosion, kernel, iterations=3)
+
+    img_output = img_test.copy()
+
+    for i in range(len(img_test)):
+        for j in range(len(img_test[0])):
+            i_pixel = int(img_test[i][j])
+            b_pixel = int(img_dilated[i][j])
+            if b_pixel >= i_pixel:
+                img_output[i][j] = 0
+            else:
+                img_output[i][j] = i_pixel - b_pixel
+
+    # Convert an image to binary image
+    img_test = img_output.astype('uint8')
+    _, img_th = cv2.threshold(img_test, 240, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+
+    # Image Preprocessing 2: Open then close operation
+    img_test = img_th.copy()
+
+    kernel = np.ones((5,5),np.uint16)
+    img1 = cv2.dilate(img_test, kernel, iterations=1)
+    img2 = cv2.erode(img1, kernel, iterations=1)
+    img3 = cv2.dilate(img2, kernel, iterations=2)
+    img4 = cv2.erode(img3, kernel, iterations=2)
+    kernel = np.ones((3,3),np.uint16)
+    img5 = cv2.erode(img4, kernel, iterations=1)
+    img6 = cv2.dilate(img5, kernel, iterations=1)
+    
+
+    img_output = img6.copy()
+
+    # Watershed implementation
+    img_test = img_output.copy()
+    distance = ndi.distance_transform_edt(img_test)
+
+    coords = peak_local_max(distance, min_distance=7)
+    mask = np.zeros(distance.shape, dtype=bool)
+    mask[tuple(coords.T)] = True
+    markers = ndi.label(mask)[0]
+
+    # coords = peak_local_max(distance, labels=img_array)
+
+    segmented_cells = watershed(-distance, markers, mask=img_test)
+
+    img_seg = label2rgb(segmented_cells, bg_label=0)
+
+    for i in range(len(img_seg)):
+        for j in range(len(img_seg[0])):
+            img_seg[i][j][0] = int(img_seg[i][j][0]*255)
+            img_seg[i][j][1] = int(img_seg[i][j][1]*255)
+            img_seg[i][j][2] = int(img_seg[i][j][2]*255)
+
+    img_seg = img_seg.astype('uint8')
+    img_seg = cv2.cvtColor(img_seg, cv2.COLOR_RGB2GRAY)
+    # plt.imshow(img_seg, 'gray')
+    # plt.show()
+
+    new_img_seg = img_seg.copy()
+    for i in range(len(img_seg)):
+        for j in range(len(img_seg[0])):
+            pixel = img_seg[i][j]
+            if (pixel != 0):
+                found = False
+                for a in range(-1, 2):
+                    for b in range(-1,2):
+                        if i+a >= 0 and i+a < len(img_seg) and j+b >= 0 and j+b < len(img_seg[0]):
+                            if img_seg[i+a][j+b] != 0 and img_seg[i+a][j+b] != pixel:
+                                found = True
+                                break
+                    if (found):
+                        break
+                if (found):
+                    new_img_seg[i][j] = 0
+                
+    # plt.imshow(new_img_seg, 'gray')
+    # plt.show()
+
+    contours, _ = cv2.findContours(new_img_seg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # print(len(contours))
+    img_contour = cv2.drawContours(img, contours, -1, (0,255,0), 1)
+
+    centers = []
+    for c in contours:
+        (x, y), radius = cv2.minEnclosingCircle(c)
+        centers.append((x,y))
+
+    centers = np.array(centers)
+    # print(centers)
+
+    if tracked is None:
+        newtrack_dict = []
+        total_area = 0
+        for c in range(len(centers)):
+            if cv2.contourArea(contours[c]) > 20:
+                total_area += cv2.contourArea(contours[c])
+                newtrack_dict.append({
+                    "id": c,
+                    "coords": centers[c],
+                    "contour": contours[c],
+                    "area": cv2.contourArea(contours[c])
+                })
+                # Add a new entry for cell trajectories
+                trajectories.append({
+                    "id": c,
+                    "new_contour": contours[c],
+                    "trajectories": []
+                })
+                centroid = find_centroid(contours[c])
+                if centroid not in trajectories[-1]["trajectories"]:
+                    trajectories[-1]["trajectories"].append(centroid)
+                
+        print("Number of cells: " + str(len(newtrack_dict)))
+        avg_area = total_area / len(newtrack_dict)
+        print("Avg area: " + str(avg_area))
+        tracked = newtrack_dict
+    else:
+        tracked = track_obj(tracked, centers, contours, 50)
+
+    # for i in tracked:
+    #     print(i["id"])
+    #     print(i["coords"])
+
+    frame = np.ones(img.shape,np.uint8)*255
+    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+
+    track_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
+				(127, 127, 255), (255, 0, 255), (255, 127, 255),
+				(127, 0, 255), (127, 0, 127),(127, 10, 255), (0,255, 127)]
+    for j in tracked:
+        x = int(j["coords"][0])
+        y = int(j["coords"][1])
+        tl = (x-20,y-20)
+        br = (x+20,y+20)
+        track_color = track_colors[j["id"] % len(track_colors)]
+        if mode > 0:
+            if counter == int(line[0]) and j["id"] == int(line[1]):
+                cv2.rectangle(frame,tl,br,track_color,2)
+                line = f.readline()
+                if line == "":
+                    mode = -1
+                else:
+                    line = line.split(",")
+        cv2.putText(frame,str(j["id"]), (x-10,y-20),0, 0.5, track_color,2)
+        cv2.drawContours(frame,j["contour"], -1, track_color, 3)
+        cv2.circle(frame,(x,y), 6, track_color,-1)
+        
+        # Draw trajectories
+        for k in range(len(trajectories)):
+            if trajectories[k]['id'] == j["id"]:
+                for centroid in trajectories[k]["trajectories"]:
+                    cv2.circle(frame, centroid, 3, track_color, -1)
+
+    
+    # cv2.destroyAllWindows()
+    # cv2.imshow('image',frame)
+    # cv2.waitKey(5000)
+    
+    cv2.imwrite("image"+str(counter)+".jpg", frame)
+
+    time.sleep(0.5)
+
+
+    # plt.imshow(img_contour, 'gray'),plt.title(image_path)
+    # plt.savefig(f'../seg_images/{counter}')
+    counter += 1
