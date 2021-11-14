@@ -8,8 +8,9 @@ import time
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
-from sklearn.cluster import MeanShift
+from skimage.util import img_as_ubyte
 from skimage.color import label2rgb
+from sklearn.cluster import MeanShift
 
 from PIL import Image
 
@@ -228,13 +229,13 @@ for img_name in os.listdir(IMAGE_FOLDER):
 
     img_seg = label2rgb(segmented_cells, bg_label=0)
 
-    for i in range(len(img_seg)):
-        for j in range(len(img_seg[0])):
-            img_seg[i][j][0] = int(img_seg[i][j][0]*255)
-            img_seg[i][j][1] = int(img_seg[i][j][1]*255)
-            img_seg[i][j][2] = int(img_seg[i][j][2]*255)
-
-    img_seg = img_seg.astype('uint8')
+    # for i in range(len(img_seg)):
+    #     for j in range(len(img_seg[0])):
+    #         img_seg[i][j][0] = int(img_seg[i][j][0]*255)
+    #         img_seg[i][j][1] = int(img_seg[i][j][1]*255)
+    #         img_seg[i][j][2] = int(img_seg[i][j][2]*255)
+    # img_seg = img_seg.astype('uint8')
+    img_seg = img_as_ubyte(img_seg)
     img_seg = cv2.cvtColor(img_seg, cv2.COLOR_RGB2GRAY)
     # plt.imshow(img_seg, 'gray')
     # plt.show()
