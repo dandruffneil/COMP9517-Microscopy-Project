@@ -109,7 +109,7 @@ def track_obj(tracked, centers, contours, thres):
 
     for i in range(len(centers)):
         if i not in matched_new:
-            if cv2.contourArea(contours[i]) > 20:
+            if cv2.contourArea(contours[i]) > 20 and 0 not in contours[i] and 699 not in contours[i][:,0,1] and 1099 not in contours[i][:,0,0]:
                 new_tracked.append({
                     "id": max_id,
                     "coords": centers[i],
