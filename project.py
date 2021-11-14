@@ -131,7 +131,6 @@ def track_obj(tracked, centers, contours, thres):
     # print("Active trackers: " + str(len(new_tracked)))
     # print(new_tracked)
     return new_tracked
-
         
 line = None
 if mode > 0:
@@ -141,6 +140,7 @@ if mode > 0:
     else:
         line = line.split(",")
 tracked = None
+trajectories = []
 for img_name in os.listdir(IMAGE_FOLDER):
     image_path = os.path.join(IMAGE_FOLDER, img_name)
     print(image_path)
@@ -291,6 +291,19 @@ for img_name in os.listdir(IMAGE_FOLDER):
     frame = np.ones(img.shape,np.uint8)*255
     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
 
+    for i in tracked:
+        try:
+            trajectories[counter].append({
+                "id": i["id"],
+                "coords": i["coords"]
+            })
+        except:
+            trajectories.append([])
+            trajectories[counter].append({
+                "id": i["id"],
+                "coords": i["coords"]
+            })
+
     track_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
 				(127, 127, 255), (255, 0, 255), (255, 127, 255),
 				(127, 0, 255), (127, 0, 127),(127, 10, 255), (0,255, 127)]
@@ -311,6 +324,12 @@ for img_name in os.listdir(IMAGE_FOLDER):
         cv2.putText(frame,str(j["id"]), (x-10,y-20),0, 0.5, track_color,2)
         cv2.drawContours(frame,j["contour"], -1, track_color, 3)
         cv2.circle(frame,(x,y), 6, track_color,-1)
+
+        # Draw trajectories
+        for k in range(len(trajectories)):
+            for i in range(len(trajectories[k])):
+                if trajectories[k][i]["id"] == j["id"]:
+                    cv2.circle(frame, (int(trajectories[k][i]["coords"][0]), int(trajectories[k][i]["coords"][1])), 3, track_color, -1)
 
     # cv2.destroyAllWindows()
     # cv2.imshow('image',frame)
