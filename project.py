@@ -14,18 +14,6 @@ from sklearn.cluster import MeanShift
 
 from PIL import Image
 
-
-IMAGE_FOLDER = "../Sequences/01/"
-n_images = len(os.listdir(IMAGE_FOLDER))
-# images are 1100 x 700
-counter = 0
-mode = 0 # 0: first time, 1: second time
-if mode == 0:
-    f = open("division.txt", "w")
-else:
-    f = open("division.txt", "r")
-max_id = -1
-
 # track objects based on distance
 def track_obj(tracked, centers, contours, thres):
     global max_id
@@ -135,7 +123,17 @@ def track_obj(tracked, centers, contours, thres):
     # print(new_tracked)
     return new_tracked
 
-
+# ---------- MAIN CODE -------------
+IMAGE_FOLDER = "../Sequences/01/"
+n_images = len(os.listdir(IMAGE_FOLDER))
+# images are 1100 x 700
+counter = 0
+mode = 0 # 0: first time, 1: second time
+if mode == 0:
+    f = open("division.txt", "w")
+else:
+    f = open("division.txt", "r")
+max_id = -1
 line = None
 if mode > 0:
     line = f.readline()
@@ -145,6 +143,7 @@ if mode > 0:
         line = line.split(",")
 tracked = None
 trajectories = []
+# Loop through each image in sequence
 for img_name in os.listdir(IMAGE_FOLDER):
     image_path = os.path.join(IMAGE_FOLDER, img_name)
     print(image_path)
