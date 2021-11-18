@@ -134,7 +134,8 @@ def track_obj(tracked, centers, contours, thres):
     # print("Active trackers: " + str(len(new_tracked)))
     # print(new_tracked)
     return new_tracked
-        
+
+
 line = None
 if mode > 0:
     line = f.readline()
@@ -148,22 +149,12 @@ for img_name in os.listdir(IMAGE_FOLDER):
     image_path = os.path.join(IMAGE_FOLDER, img_name)
     print(image_path)
     img = cv2.imread(image_path, -1)
-    # plt.imshow(img, 'gray')
-    # plt.title('Original Image')
-    # plt.show()
 
-    # Testing min-max filter to remove background
+    # Min-Max Filter to remove background gradient
     img_test = img.copy()
-    # plt.imshow(img, 'gray'), plt.title('Original')
-    # plt.show()
-
     kernel = np.ones((50,50),np.uint16)
     img_erosion = cv2.erode(img_test, kernel, iterations=3)
     img_dilated = cv2.dilate(img_erosion, kernel, iterations=3)
-
-    # plt.subplot(1,2,1),plt.imshow(img_erosion, 'gray'), plt.title('Eroded (min-filter)')
-    # plt.subplot(1,2,2),plt.imshow(img_dilated, 'gray'), plt.title('Dilated again (min-max filter)')
-    # plt.show()
 
     img_output = img_test.copy()
 
@@ -176,18 +167,11 @@ for img_name in os.listdir(IMAGE_FOLDER):
             else:
                 img_output[i][j] = i_pixel - b_pixel
 
-    # plt.imshow(img_output, 'gray'), plt.title('Output')
-    # plt.show()
-    # print(img_output)
-
+    # Otsu Threshold
     img_test = img_output.astype('uint8')
-    # img_th = cv2.adaptiveThreshold(img_test, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 5, 2)
     _, img_th = cv2.threshold(img_test, 240, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # plt.imshow(img_th, 'gray'), plt.title('Adaptive thresholded')
-    # plt.show()
-
-    # Open then close operation
+    # Open and close operations
     img_test = img_th.copy()
 
     kernel = np.ones((5,5),np.uint16)
@@ -198,15 +182,11 @@ for img_name in os.listdir(IMAGE_FOLDER):
     kernel = np.ones((3,3),np.uint16)
     img5 = cv2.erode(img4, kernel, iterations=1)
     img6 = cv2.dilate(img5, kernel, iterations=1)
-    # plt.subplot(1,2,1),plt.imshow(img_test, 'gray'), plt.title('Original')
-    # plt.subplot(1,2,2),plt.imshow(img6, 'gray'), plt.title('Opening then closing')
-    # plt.show()
 
+    # Contour filling
     _,cont,hier = cv2.findContours(img6,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
-
     for cnt in cont:
         cv2.drawContours(img6,[cnt],0,1,-1)
-
     img_output = img6.copy()
 
     # Watershed implementation
@@ -217,28 +197,12 @@ for img_name in os.listdir(IMAGE_FOLDER):
     mask = np.zeros(distance.shape, dtype=bool)
     mask[tuple(coords.T)] = True
     markers = ndi.label(mask)[0]
-
-    # coords = peak_local_max(distance, labels=img_array)
-
-
     segmented_cells = watershed(-distance, markers, mask=img_test)
 
-    # plt.subplot(1,2,1),plt.imshow(img_test, 'gray'), plt.title('original')
-    # plt.subplot(1,2,2),plt.imshow(label2rgb(segmented_cells, bg_label=0)), plt.title('watershedded')
-    # plt.show()
-
+    # Splitting connected components
     img_seg = label2rgb(segmented_cells, bg_label=0)
-
-    # for i in range(len(img_seg)):
-    #     for j in range(len(img_seg[0])):
-    #         img_seg[i][j][0] = int(img_seg[i][j][0]*255)
-    #         img_seg[i][j][1] = int(img_seg[i][j][1]*255)
-    #         img_seg[i][j][2] = int(img_seg[i][j][2]*255)
-    # img_seg = img_seg.astype('uint8')
     img_seg = img_as_ubyte(img_seg)
     img_seg = cv2.cvtColor(img_seg, cv2.COLOR_RGB2GRAY)
-    # plt.imshow(img_seg, 'gray')
-    # plt.show()
 
     new_img_seg = img_seg.copy()
     for i in range(len(img_seg)):
@@ -257,12 +221,8 @@ for img_name in os.listdir(IMAGE_FOLDER):
                 if (found):
                     new_img_seg[i][j] = 0
                 
-    # plt.imshow(new_img_seg, 'gray')
-    # plt.show()
-
-
+    # Find and draw contours
     _, contours, _ = cv2.findContours(new_img_seg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # print(len(contours))
     img_contour = cv2.drawContours(img, contours, -1, (0,255,0), 1)
 
     centers = []
@@ -271,7 +231,6 @@ for img_name in os.listdir(IMAGE_FOLDER):
         centers.append((x,y))
 
     centers = np.array(centers)
-    # print(centers)
 
     if tracked is None:
         newtrack_dict = []
@@ -291,10 +250,6 @@ for img_name in os.listdir(IMAGE_FOLDER):
         tracked = newtrack_dict
     else:
         tracked = track_obj(tracked, centers, contours, 50)
-
-    # for i in tracked:
-    #     print(i["id"])
-    #     print(i["coords"])
 
     frame = np.ones(img.shape,np.uint8)*255
     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
@@ -339,14 +294,7 @@ for img_name in os.listdir(IMAGE_FOLDER):
                 if trajectories[k][i]["id"] == j["id"]:
                     cv2.circle(frame, (int(trajectories[k][i]["coords"][0]), int(trajectories[k][i]["coords"][1])), 3, track_color, -1)
 
-    # cv2.destroyAllWindows()
-    # cv2.imshow('image',frame)
-    # cv2.waitKey(5000)
     cv2.imwrite("image"+str(counter)+".jpg", frame)
-
     time.sleep(0.5)
 
-
-    # plt.imshow(img_contour, 'gray'),plt.title(image_path)
-    # plt.savefig(f'../seg_images/{counter}')
     counter += 1
