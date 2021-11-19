@@ -1,3 +1,8 @@
+# COMP9517 Group I Microscopy Project
+# Some code from this open-source repository was used for displaying the contours
+# and centers of the cells:
+# https://github.com/mabhisharma/Multi-Object-Tracking-with-Kalman-Filter/
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
